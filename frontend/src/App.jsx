@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
@@ -14,6 +14,8 @@ import Orders from "./pages/Orders";
 import Contact from "./pages/Contact";
 
 function App() {
+  const { pathname } = useLocation();
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -27,11 +29,17 @@ function App() {
       { threshold: 0.2 }
     );
 
-    const nodes = document.querySelectorAll(".reveal");
-    nodes.forEach((node) => observer.observe(node));
+    // Re-scan newly mounted route content before observing reveal nodes.
+    const frameId = window.requestAnimationFrame(() => {
+      const nodes = document.querySelectorAll(".reveal:not(.visible)");
+      nodes.forEach((node) => observer.observe(node));
+    });
 
-    return () => observer.disconnect();
-  }, []);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [pathname]);
 
   return (
     <>
