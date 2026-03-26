@@ -1,6 +1,7 @@
 package com.universalprinters.service;
 
 import com.universalprinters.model.Order;
+import jakarta.annotation.PostConstruct;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import java.nio.file.Path;
@@ -22,6 +23,7 @@ public class NotificationService {
     private final JavaMailSender mailSender;
     private final String ownerEmail;
     private final String mailHost;
+    private final String mailPort;
     private final String mailUsername;
     private final String mailPassword;
     private final String mailFrom;
@@ -30,6 +32,7 @@ public class NotificationService {
             ObjectProvider<JavaMailSender> mailSenderProvider,
             @Value("${app.owner-email:mahendra8143411340@gmail.com}") String ownerEmail,
             @Value("${spring.mail.host:}") String mailHost,
+            @Value("${spring.mail.port:}") String mailPort,
             @Value("${spring.mail.username:}") String mailUsername,
             @Value("${spring.mail.password:}") String mailPassword,
             @Value("${app.mail.from:}") String mailFrom
@@ -37,9 +40,24 @@ public class NotificationService {
         this.mailSender = mailSenderProvider.getIfAvailable();
         this.ownerEmail = ownerEmail;
         this.mailHost = mailHost;
+        this.mailPort = mailPort;
         this.mailUsername = mailUsername;
         this.mailPassword = mailPassword;
         this.mailFrom = mailFrom;
+    }
+
+    @PostConstruct
+    public void logMailConfiguration() {
+        logger.info(
+            "Mail config status: senderBeanPresent={}, host='{}', port='{}', username='{}', passwordPresent={}, from='{}', owner='{}'.",
+            mailSender != null,
+            nullable(mailHost),
+            nullable(mailPort),
+            maskSensitive(mailUsername),
+            !blank(mailPassword),
+            maskSensitive(resolveFrom()),
+            maskSensitive(ownerEmail)
+        );
     }
 
     public void sendOwnerLoginNotice(String name, String email, String phone, Path loginSheetPath) {
@@ -127,7 +145,15 @@ public class NotificationService {
             mailSender.send(message);
             logger.info("Mail sent to {} with subject '{}'.", to, subject);
         } catch (MailException ex) {
-            logger.warn("Unable to send mail to {} with subject '{}': {}", to, subject, ex.getMessage());
+            Throwable root = rootCause(ex);
+            logger.warn(
+                "Unable to send mail to {} with subject '{}': {} | rootCause={} ({})",
+                to,
+                subject,
+                ex.getMessage(),
+                root.getMessage(),
+                root.getClass().getSimpleName()
+            );
         }
     }
 
@@ -152,5 +178,27 @@ public class NotificationService {
             return mailFrom;
         }
         return mailUsername;
+    }
+
+    private Throwable rootCause(Throwable ex) {
+        Throwable current = ex;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private String maskSensitive(String value) {
+        if (blank(value)) {
+            return "";
+        }
+        int atIndex = value.indexOf('@');
+        if (atIndex > 1) {
+            return value.charAt(0) + "***" + value.substring(atIndex);
+        }
+        if (value.length() <= 3) {
+            return "***";
+        }
+        return value.substring(0, 2) + "***";
     }
 }
